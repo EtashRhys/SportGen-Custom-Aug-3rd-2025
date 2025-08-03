@@ -1,0 +1,159 @@
+Perfect. This shift to a fully **custom open-source stack** will give you total control and freedom. You’ll essentially be building a **modular sports analysis platform** without the AWS lock-in. Below is a **complete architecture plan**, listing all the components you need, frameworks to use, and a file structure to organize it all.
+
+---
+
+## ✅ **High-Level Stack Overview**
+
+### **Frontend (React + Next.js)**
+
+* **Framework:** [Next.js](https://nextjs.org/) (SSR + static export + API routes)
+* **UI Library:** TailwindCSS (fast styling)
+* **State Management:** Zustand or Redux (Zustand is simpler)
+* **Video Player:** React Player / custom HTML5 `<video>`
+* **Overlay Drawing:** [Konva.js](https://konvajs.org/) (canvas shapes/lines on video)
+
+---
+
+### **Backend (Node.js + Express/Fastify)**
+
+* **Web Server:** Express.js (or Fastify for better perf)
+* **AI Integration:** REST endpoint that calls Anthropic Claude 3.5 Sonnet API
+* **Pose Estimation:** [OpenPose](https://github.com/CMU-Perceptual-Computing-Lab/openpose) or [MediaPipe](https://github.com/google/mediapipe) via Python microservice
+* **Storage:** Local file storage initially → later S3-compatible storage (e.g. MinIO)
+
+---
+
+### **Database**
+
+* **Choice:** PostgreSQL (with Prisma ORM for dev speed)
+* **Tables:**
+
+  * Users (id, name, email, password\_hash, role)
+  * Videos (id, user\_id, file\_path, created\_at)
+  * Feedback (id, video\_id, analysis\_text, overlay\_data, created\_at)
+
+---
+
+### **Authentication**
+
+* **Option 1:** NextAuth.js (JWT-based)
+* **Option 2:** Custom JWT Auth (bcrypt for passwords)
+
+---
+
+## ✅ **Core Components Needed**
+
+1. **Authentication Pages**
+
+   * `/login`
+   * `/signup`
+   * `/logout`
+
+2. **Dashboard**
+
+   * Video list
+   * Upload button
+   * Feedback display per video
+   * Video player with toggleable overlay
+
+3. **Upload System**
+
+   * Frontend uploads to backend via `POST /upload`
+   * Backend saves to `uploads/` folder
+   * Stores metadata in DB
+
+4. **Pose Estimation Service**
+
+   * Python microservice (Flask/FastAPI)
+   * Accepts video, runs pose detection, outputs JSON of keypoints
+   * Can run locally using MediaPipe or MoveNet (TensorFlow Lite)
+
+5. **AI Analysis Service**
+
+   * Node backend calls Anthropic Claude 3.5 Sonnet
+   * Sends pose keypoints + user context → gets feedback
+   * Stores results in DB
+
+6. **Overlay Drawing**
+
+   * React + Konva.js to draw lines/arrows over video frames
+   * Stores overlay data in DB (JSON)
+
+7. **Generative Feedback Display**
+
+   * Text output from AI
+   * Optionally speech synthesis (later)
+
+---
+
+## ✅ **Project Structure**
+
+```
+sportgen-ai/
+│── backend/
+│   ├── server.js               # Express server
+│   ├── routes/
+│   │   ├── auth.js             # Login/signup
+│   │   ├── video.js            # Upload/list videos
+│   │   └── analysis.js         # AI + pose endpoints
+│   ├── services/
+│   │   ├── anthropicService.js # Calls Claude API
+│   │   └── poseService.js      # Talks to Python pose API
+│   ├── db/
+│   │   ├── prisma/             # Prisma schema
+│   │   └── index.js            # DB init
+│   └── uploads/                # Stored video files
+│
+│── pose-service/               # Python microservice
+│   ├── app.py                  # FastAPI server
+│   └── model/                  # MediaPipe/OpenPose code
+│
+│── frontend/
+│   ├── pages/
+│   │   ├── index.tsx           # Landing/login
+│   │   ├── dashboard.tsx       # Dashboard
+│   │   ├── upload.tsx          # Upload page
+│   │   └── video/[id].tsx      # Video analysis page
+│   ├── components/
+│   │   ├── VideoPlayer.tsx     # Player with overlay toggle
+│   │   └── OverlayCanvas.tsx   # Konva.js overlay
+│   └── lib/
+│       └── api.ts              # API calls
+│
+│── .env                        # API keys & DB URL
+│── package.json
+│── README.md
+```
+
+---
+
+## ✅ **Additional Considerations**
+
+* **Local Development:** Use Docker for DB + Python service
+* **Deployment:** Can use DigitalOcean, Render, or your own VPS
+* **Security:** JWT tokens for API calls, bcrypt for passwords
+* **Scalability:** Later replace local storage with MinIO or Backblaze B2
+
+---
+
+## ✅ **Next Steps**
+
+1. **Initialize Next.js + Express backend**
+2. **Set up PostgreSQL + Prisma**
+3. **Implement simple upload + list videos**
+4. **Add Python pose estimation service**
+5. **Integrate AI feedback with Claude**
+6. **Add overlay + draw feature**
+7. **Polish UI & make it production-ready**
+
+---
+
+🔥 **Do you want me to give you the full starter boilerplate (frontend + backend + pose service) in one go** so you can just clone and run it in VS Code?
+
+I can write:
+
+* `backend/server.js` (Express API)
+* `pose-service/app.py` (FastAPI with MediaPipe)
+* `frontend` Next.js pages with a working upload & dashboard
+
+👉 Shall I proceed with **Step 1: Full minimal boilerplate (React + Node + DB)**?
