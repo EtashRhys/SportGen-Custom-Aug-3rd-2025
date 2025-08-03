@@ -1,0 +1,34 @@
+sportgen-ai/
+│── backend/
+│   ├── server.js               # Express server
+│   ├── routes/
+│   │   ├── auth.js             # Login/signup
+│   │   ├── video.js            # Upload/list videos
+│   │   └── analysis.js         # AI + pose endpoints
+│   ├── services/
+│   │   ├── anthropicService.js # Calls Claude API
+│   │   └── poseService.js      # Talks to Python pose API
+│   ├── db/
+│   │   ├── prisma/             # Prisma schema
+│   │   └── index.js            # DB init
+│   └── uploads/                # Stored video files
+│
+│── pose-service/               # Python microservice
+│   ├── app.py                  # FastAPI server
+│   └── model/                  # MediaPipe/OpenPose code
+│
+│── frontend/
+│   ├── pages/
+│   │   ├── index.tsx           # Landing/login
+│   │   ├── dashboard.tsx       # Dashboard
+│   │   ├── upload.tsx          # Upload page
+│   │   └── video/[id].tsx      # Video analysis page
+│   ├── components/
+│   │   ├── VideoPlayer.tsx     # Player with overlay toggle
+│   │   └── OverlayCanvas.tsx   # Konva.js overlay
+│   └── lib/
+│       └── api.ts              # API calls
+│
+│── .env                        # API keys & DB URL
+│── package.json
+│── README.md
