@@ -1,0 +1,274 @@
+from fastapi import FastAPI, UploadFile, File, HTTPException, Query
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+import os
+import cv2
+import json
+import glob
+import time
+import mediapipe as mp
+from typing import List, Optional
+
+app = FastAPI()
+
+# Mediapipe Pose Setup
+mp_pose = mp.solutions.pose
+mp_drawing = mp.solutions.drawing_utils
+mp_drawing_styles = mp.solutions.drawing_styles
+
+# Base Paths
+BASE_UPLOAD_DIR = r"C:\Users\bradp\sportgen-ai\backend\uploads"
+UPLOAD_DIR = os.path.join(BASE_UPLOAD_DIR, "raw")
+PROCESSED_DIR = os.path.join(BASE_UPLOAD_DIR, "processed")
+VERSIONS_DIR = os.path.join(BASE_UPLOAD_DIR, "versions")
+
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+os.makedirs(PROCESSED_DIR, exist_ok=True)
+os.makedirs(VERSIONS_DIR, exist_ok=True)
+
+# Default frame processing config (can be overridden by query params)
+DEFAULT_MAX_FRAMES = 300
+DEFAULT_FRAME_SKIP = 3
+DEFAULT_MOTION_THRESHOLD = 15.0
+JPEG_QUALITY = 90  # JPEG compression quality (0-100)
+
+
+# Helper: Draw landmarks on image
+def draw_landmarks_on_image(image, landmarks):
+    h, w, _ = image.shape
+    for lm in landmarks:
+        cx, cy = int(lm['x'] * w), int(lm['y'] * h)
+        cv2.circle(image, (cx, cy), 5, (0, 255, 0), -1)
+    return image
+
+
+# Placeholder for future AI interpolation of frames
+def ai_interpolation_stub(frames_folder: str):
+    """
+    Stub function for AI-based frame interpolation.
+    Given a folder of frames, generate interpolated frames between key frames.
+    Currently does nothing but can be expanded later.
+    """
+    print(f"[AI Stub] AI interpolation placeholder for frames in: {frames_folder}")
+
+
+# Model: Save Version Request for images (unchanged)
+class SaveVersionRequest(BaseModel):
+    base_filename: str
+    version_number: int
+    landmarks: List[dict]
+
+
+@app.post("/pose/draw/")
+async def detect_pose_and_draw(file: UploadFile = File(...)):
+    input_path = os.path.join(UPLOAD_DIR, file.filename)
+    output_path = os.path.join(PROCESSED_DIR, f"processed_{file.filename}")
+    base_name = os.path.splitext(file.filename)[0]
+    version_folder = os.path.join(VERSIONS_DIR, base_name)
+    os.makedirs(version_folder, exist_ok=True)
+
+    with open(input_path, "wb") as f:
+        f.write(await file.read())
+
+    image = cv2.imread(input_path)
+    if image is None:
+        raise HTTPException(status_code=400, detail="Invalid image file")
+
+    landmarks_list = []
+
+    with mp_pose.Pose(static_image_mode=True) as pose:
+        results = pose.process(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
+        if not results.pose_landmarks:
+            return {"error": "No pose detected"}
+        for lm in results.pose_landmarks.landmark:
+            landmarks_list.append({
+                "x": lm.x, "y": lm.y, "z": lm.z, "visibility": lm.visibility
+            })
+
+        mp_drawing.draw_landmarks(
+            image, results.pose_landmarks, mp_pose.POSE_CONNECTIONS,
+            landmark_drawing_spec=mp_drawing_styles.get_default_pose_landmarks_style()
+        )
+
+    cv2.imwrite(output_path, image)
+    with open(os.path.join(version_folder, "original.json"), "w") as jf:
+        json.dump(landmarks_list, jf, indent=2)
+
+    return JSONResponse({
+        "processed_image": f"processed/processed_{file.filename}",
+        "landmarks": landmarks_list,
+        "version": "original"
+    })
+
+
+@app.post("/pose/save-version/")
+async def save_pose_version(request: SaveVersionRequest):
+    version_folder = os.path.join(VERSIONS_DIR, request.base_filename)
+    os.makedirs(version_folder, exist_ok=True)
+
+    original_path = os.path.join(PROCESSED_DIR, f"processed_{request.base_filename}.jpg")
+    if not os.path.exists(original_path):
+        raise HTTPException(status_code=404, detail="Original processed image not found")
+
+    image = cv2.imread(original_path)
+    image_with_updates = draw_landmarks_on_image(image.copy(), request.landmarks)
+
+    version_img = os.path.join(version_folder, f"v{request.version_number}.jpg")
+    version_json = os.path.join(version_folder, f"v{request.version_number}.json")
+    cv2.imwrite(version_img, image_with_updates)
+    with open(version_json, "w") as jf:
+        json.dump(request.landmarks, jf, indent=2)
+
+    return JSONResponse({
+        "message": f"Version v{request.version_number} saved successfully",
+        "image": version_img,
+        "json": version_json
+    })
+
+
+@app.get("/pose/list-versions/{base_filename}")
+async def list_versions(base_filename: str):
+    version_folder = os.path.join(VERSIONS_DIR, base_filename)
+
+    if not os.path.exists(version_folder):
+        return JSONResponse(status_code=404, content={"error": "No versions found for this file."})
+
+    versions = []
+    for img_path in sorted(glob.glob(os.path.join(version_folder, "*.jpg"))):
+        version_name = os.path.splitext(os.path.basename(img_path))[0]
+        json_path = os.path.join(version_folder, f"{version_name}.json")
+        versions.append({
+            "version": version_name,
+            "image": img_path.replace("\\", "/"),
+            "json": json_path.replace("\\", "/") if os.path.exists(json_path) else None
+        })
+
+    return {"versions": versions}
+
+
+@app.post("/pose/video/")
+async def process_video_pose(
+    file: UploadFile = File(...),
+    user: Optional[str] = Query(None, description="User folder name for saving frames"),
+    max_frames: int = Query(DEFAULT_MAX_FRAMES, ge=1, le=1000, description="Max frames to save"),
+    frame_skip: int = Query(DEFAULT_FRAME_SKIP, ge=1, le=30, description="Frame skip interval"),
+    motion_threshold: float = Query(DEFAULT_MOTION_THRESHOLD, ge=0.0, le=255.0, description="Motion detection threshold"),
+):
+    """
+    Upload a video file, process pose estimation on frames with dynamic frame skipping based on motion,
+    save processed frames and landmarks in user-specific folder.
+    """
+
+    # 1. Save raw video
+    raw_path = os.path.join(UPLOAD_DIR, file.filename)
+    await file.seek(0)
+    with open(raw_path, "wb") as f:
+        f.write(await file.read())
+    print(f"[INFO] Saved raw video to: {raw_path}")
+
+    # 2. Prepare processed frames directory
+    timestamp = int(time.time())
+    user_folder_name = user if user else f"test_user_{timestamp}"
+    video_basename = os.path.splitext(file.filename)[0]
+    processed_dir = os.path.join(PROCESSED_DIR, user_folder_name, video_basename)
+    os.makedirs(processed_dir, exist_ok=True)
+    print(f"[INFO] Processed frames will be saved to: {processed_dir}")
+
+    # 3. Open video capture and initialize Mediapipe pose
+    cap = cv2.VideoCapture(raw_path)
+    if not cap.isOpened():
+        raise HTTPException(status_code=400, detail="Cannot open video file")
+
+    pose = mp_pose.Pose(static_image_mode=True)
+
+    prev_gray = None
+    frame_count = 0
+    saved_frames = 0
+    saved_files = []
+    landmarks_summary = []
+
+    while saved_frames < max_frames:
+        ret, frame = cap.read()
+        if not ret:
+            print("[INFO] End of video reached")
+            break
+
+        # Fix upside-down frames if needed (you can remove or comment if not required)
+        frame = cv2.rotate(frame, cv2.ROTATE_180)
+
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+        # Calculate motion score
+        motion_score = 0.0
+        if prev_gray is not None:
+            diff = cv2.absdiff(gray, prev_gray)
+            motion_score = diff.mean()
+        prev_gray = gray
+
+        # Decide to process frame based on motion and frame skip
+        process_frame = False
+        if motion_score > motion_threshold:
+            # High motion → process every frame to catch details
+            process_frame = True
+        elif frame_count % frame_skip == 0:
+            # Low motion → skip some frames
+            process_frame = True
+
+        if process_frame:
+            # Pose estimation
+            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            results = pose.process(rgb_frame)
+
+            if results.pose_landmarks:
+                frame_copy = frame.copy()
+                mp_drawing.draw_landmarks(
+                    frame_copy,
+                    results.pose_landmarks,
+                    mp_pose.POSE_CONNECTIONS,
+                    landmark_drawing_spec=mp_drawing_styles.get_default_pose_landmarks_style()
+                )
+
+                # Save image with JPEG compression to reduce file size
+                frame_filename = f"frame_{saved_frames+1:05d}.jpg"
+                save_path = os.path.join(processed_dir, frame_filename)
+                encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), JPEG_QUALITY]
+                cv2.imwrite(save_path, frame_copy, encode_param)
+                saved_files.append(frame_filename)
+
+                # Save landmarks JSON
+                landmarks = [{
+                    "x": lm.x,
+                    "y": lm.y,
+                    "z": lm.z,
+                    "visibility": lm.visibility
+                } for lm in results.pose_landmarks.landmark]
+
+                json_filename = f"frame_{saved_frames+1:05d}.json"
+                json_path = os.path.join(processed_dir, json_filename)
+                with open(json_path, "w") as jf:
+                    json.dump(landmarks, jf, indent=2)
+
+                # Add to landmarks summary (can be trimmed or extended later)
+                landmarks_summary.append({
+                    "frame": frame_filename,
+                    "landmarks": landmarks
+                })
+
+                saved_frames += 1
+
+        frame_count += 1
+
+    cap.release()
+    pose.close()
+
+    # Call AI interpolation stub (future use)
+    ai_interpolation_stub(processed_dir)
+
+    print(f"[INFO] Processing complete: {saved_frames} frames saved.")
+
+    return {
+        "message": f"Video processed dynamically. {saved_frames} frames saved (max {max_frames}).",
+        "processed_frames_path": processed_dir.replace("\\", "/"),
+        "frames": saved_files,
+        "landmarks_summary": landmarks_summary
+    }
