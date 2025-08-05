@@ -1,0 +1,164 @@
+from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+import os, cv2, json, glob
+import mediapipe as mp
+from typing import List
+
+app = FastAPI()
+
+mp_pose = mp.solutions.pose
+mp_drawing = mp.solutions.drawing_utils
+mp_drawing_styles = mp.solutions.drawing_styles
+
+# *** ABSOLUTE BASE PATH ***
+BASE_UPLOAD_DIR = r"C:\Users\bradp\sportgen-ai\backend\uploads"
+
+# Subfolders inside absolute base
+UPLOAD_DIR = os.path.join(BASE_UPLOAD_DIR, "raw")                # raw uploads (videos/images)
+PROCESSED_DIR = os.path.join(BASE_UPLOAD_DIR, "processed")       # processed files (images/videos)
+VERSIONS_DIR = os.path.join(BASE_UPLOAD_DIR, "versions")         # saved pose versions
+
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+os.makedirs(PROCESSED_DIR, exist_ok=True)
+os.makedirs(VERSIONS_DIR, exist_ok=True)
+
+def draw_landmarks_on_image(image, landmarks):
+    for lm in landmarks:
+        h, w, _ = image.shape
+        cx, cy = int(lm['x'] * w), int(lm['y'] * h)
+        cv2.circle(image, (cx, cy), 5, (0, 255, 0), -1)
+    return image
+
+class SaveVersionRequest(BaseModel):
+    base_filename: str
+    version_number: int
+    landmarks: List[dict]
+
+@app.post("/pose/draw/")
+async def detect_pose_and_draw(file: UploadFile = File(...)):
+    input_path = os.path.join(UPLOAD_DIR, file.filename)
+    output_path = os.path.join(PROCESSED_DIR, f"processed_{file.filename}")
+    base_name = os.path.splitext(file.filename)[0]
+    version_folder = os.path.join(VERSIONS_DIR, base_name)
+    os.makedirs(version_folder, exist_ok=True)
+
+    with open(input_path, "wb") as f:
+        f.write(await file.read())
+
+    image = cv2.imread(input_path)
+    landmarks_list = []
+
+    with mp_pose.Pose(static_image_mode=True) as pose:
+        results = pose.process(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
+        if not results.pose_landmarks:
+            return {"error": "No pose detected"}
+        for lm in results.pose_landmarks.landmark:
+            landmarks_list.append({
+                "x": lm.x, "y": lm.y, "z": lm.z, "visibility": lm.visibility
+            })
+
+        mp_drawing.draw_landmarks(
+            image, results.pose_landmarks, mp_pose.POSE_CONNECTIONS,
+            landmark_drawing_spec=mp_drawing_styles.get_default_pose_landmarks_style()
+        )
+
+    cv2.imwrite(output_path, image)
+    with open(os.path.join(version_folder, "original.json"), "w") as jf:
+        json.dump(landmarks_list, jf, indent=2)
+
+    return JSONResponse({
+        "processed_image": f"processed/processed_{file.filename}",
+        "landmarks": landmarks_list,
+        "version": "original"
+    })
+
+@app.post("/pose/save-version/")
+async def save_pose_version(request: SaveVersionRequest):
+    version_folder = os.path.join(VERSIONS_DIR, request.base_filename)
+    os.makedirs(version_folder, exist_ok=True)
+
+    original_path = os.path.join(PROCESSED_DIR, f"processed_{request.base_filename}.jpg")
+    if not os.path.exists(original_path):
+        raise HTTPException(status_code=404, detail="Original processed image not found")
+
+    image = cv2.imread(original_path)
+    image_with_updates = draw_landmarks_on_image(image.copy(), request.landmarks)
+
+    version_img = os.path.join(version_folder, f"v{request.version_number}.jpg")
+    version_json = os.path.join(version_folder, f"v{request.version_number}.json")
+    cv2.imwrite(version_img, image_with_updates)
+    with open(version_json, "w") as jf:
+        json.dump(request.landmarks, jf, indent=2)
+
+    return JSONResponse({
+        "message": f"Version v{request.version_number} saved successfully",
+        "image": version_img,
+        "json": version_json
+    })
+
+@app.get("/pose/list-versions/{base_filename}")
+async def list_versions(base_filename: str):
+    version_folder = os.path.join(VERSIONS_DIR, base_filename)
+
+    if not os.path.exists(version_folder):
+        return JSONResponse(status_code=404, content={"error": "No versions found for this file."})
+
+    versions = []
+    for img_path in sorted(glob.glob(os.path.join(version_folder, "*.jpg"))):
+        version_name = os.path.splitext(os.path.basename(img_path))[0]
+        json_path = os.path.join(version_folder, f"{version_name}.json")
+        versions.append({
+            "version": version_name,
+            "image": img_path.replace("\\", "/"),
+            "json": json_path.replace("\\", "/") if os.path.exists(json_path) else None
+        })
+
+    return {"versions": versions}
+
+@app.post("/pose/video/")
+async def process_video_pose(file: UploadFile = File(...)):
+    input_path = os.path.join(UPLOAD_DIR, file.filename)
+    output_path = os.path.join(PROCESSED_DIR, f"processed_{file.filename}")
+
+    with open(input_path, "wb") as f:
+        f.write(await file.read())
+
+    pose = mp_pose.Pose(static_image_mode=False, min_detection_confidence=0.5, min_tracking_confidence=0.5)
+
+    cap = cv2.VideoCapture(input_path)
+    if not cap.isOpened():
+        return {"error": "Cannot open video file"}
+
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+
+    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        results = pose.process(rgb_frame)
+
+        if results.pose_landmarks:
+            mp_drawing.draw_landmarks(
+                frame,
+                results.pose_landmarks,
+                mp_pose.POSE_CONNECTIONS,
+                landmark_drawing_spec=mp_drawing_styles.get_default_pose_landmarks_style()
+            )
+
+        out.write(frame)
+
+    cap.release()
+    out.release()
+    pose.close()
+
+    return JSONResponse({
+        "processed_video": f"processed/processed_{file.filename}"
+    })
