@@ -1,0 +1,90 @@
+Absolutely, here’s a detailed summary of what we accomplished today — ready for your GitHub notes:
+
+---
+
+# Session Summary — SportGen Pose Estimation Backend Progress
+
+**Date:** 2025-08-04
+
+## What We Did Today
+
+### 1. **Saved Pose Versions Endpoint Fully Working**
+
+* Finalized the `/pose/save-version/` POST endpoint with:
+
+  * Proper Pydantic model validation.
+  * Complete JSON + image saving of custom pose landmarks.
+  * Content-Type and payload formatting fixed.
+  * Confirmed success response including paths to saved image and JSON files.
+
+### 2. **Video Pose Processing Endpoint Investigation**
+
+* Built `/pose/video/` endpoint to process uploaded videos:
+
+  * Input: Video file upload.
+  * Output: Video with pose landmarks drawn on each frame, saved to disk.
+* Tested video endpoint with Postman; endpoint responded successfully but output video file was empty.
+* Diagnosed common issues with OpenCV video processing:
+
+  * Verified `VideoWriter` codec and file path correctness.
+  * Confirmed video file opens and frame dimensions match.
+* Decided video processing frame-by-frame with OpenCV and MediaPipe is tricky and prone to errors if not handled perfectly.
+
+### 3. **Strategic Pivot: Frame Extraction Approach**
+
+* Agreed on breaking videos down into individual frames first:
+
+  * Save all raw frames to disk.
+  * Run pose estimation + landmark drawing on each image.
+  * Save processed frames separately.
+* Benefits of this approach:
+
+  * Easier debugging and verification per frame.
+  * End user can get frame-level output if desired.
+  * Simplifies pose estimation logic (runs on static images).
+  * Defers video re-assembly to a later step.
+* This approach also saves costs if moving off AWS, since processing is local and customizable.
+
+### 4. **YouTube Integration Idea (Future)**
+
+* Discussed possibility of pushing processed videos or frames to user’s YouTube channel for storage:
+
+  * Saves local disk space.
+  * Offloads hosting to user’s own YouTube account.
+  * Could enable direct sharing or embedding.
+* Decided to defer YouTube integration until core processing pipeline is rock-solid.
+
+### 5. **Implemented Frame Extraction + Processing Endpoint Prototype**
+
+* Wrote a new FastAPI endpoint `/pose/process-video-frames/` that:
+
+  * Saves uploaded video.
+  * Extracts frames one-by-one, saves raw images.
+  * Processes each frame with MediaPipe pose detection.
+  * Draws pose landmarks on each frame.
+  * Saves processed frames to disk.
+* Endpoint returns JSON with number of frames processed and directories for raw & processed frames.
+
+---
+
+## Next Steps
+
+* Validate frame extraction + processing thoroughly.
+* Implement frame stitching to recompile processed frames back into a video.
+* Consider UI/frontend to visualize individual frames + processed video.
+* Explore YouTube API integration for user video hosting/storage.
+* Continue building versioning and feedback features on processed pose data.
+
+---
+
+## Notes
+
+* MediaPipe logging warnings about missing IMAGE\_DIMENSIONS are normal and safe to ignore for now.
+* OpenCV’s video codecs and file path handling are critical — absolute paths and supported codecs must be verified.
+* Processing video as frames provides easier control and transparency compared to streaming video processing.
+
+---
+
+Let me know if you want me to help prepare README updates or any additional documentation!
+
+Sleep well, Brad. We’re crushing this! 🔥🚀
