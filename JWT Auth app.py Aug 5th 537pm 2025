@@ -1,0 +1,226 @@
+from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Query, Header
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+from typing import List, Optional
+from jose import JWTError, jwt
+import os
+import cv2
+import json
+import glob
+import time
+import mediapipe as mp
+
+# === JWT CONFIG ===
+SECRET_KEY = "supersecretkey"  # 🔹 must match auth-service SECRET_KEY
+ALGORITHM = "HS256"
+
+# === FASTAPI INIT ===
+app = FastAPI()
+
+# === Mediapipe Pose Setup ===
+mp_pose = mp.solutions.pose
+mp_drawing = mp.solutions.drawing_utils
+mp_drawing_styles = mp.solutions.drawing_styles
+
+# === Base Paths ===
+BASE_UPLOAD_DIR = r"C:\Users\bradp\sportgen-ai\backend\uploads"
+UPLOAD_DIR = os.path.join(BASE_UPLOAD_DIR, "raw")
+PROCESSED_DIR = os.path.join(BASE_UPLOAD_DIR, "processed")
+VERSIONS_DIR = os.path.join(BASE_UPLOAD_DIR, "versions")
+
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+os.makedirs(PROCESSED_DIR, exist_ok=True)
+os.makedirs(VERSIONS_DIR, exist_ok=True)
+
+# === Frame Config ===
+DEFAULT_MAX_FRAMES = 300
+DEFAULT_FRAME_SKIP = 3
+DEFAULT_MOTION_THRESHOLD = 15.0
+JPEG_QUALITY = 90
+
+# ======================================================
+# 🔹 JWT AUTH: Verify Token & Extract User Email
+# ======================================================
+def verify_jwt(authorization: str = Header(...)) -> str:
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Invalid Authorization header format")
+    token = authorization.split(" ")[1]
+
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_email: str = payload.get("sub")
+        if user_email is None:
+            raise HTTPException(status_code=401, detail="Token missing user email")
+        return user_email
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+# ======================================================
+# 🔹 Helpers
+# ======================================================
+def draw_landmarks_on_image(image, landmarks):
+    h, w, _ = image.shape
+    for lm in landmarks:
+        cx, cy = int(lm['x'] * w), int(lm['y'] * h)
+        cv2.circle(image, (cx, cy), 5, (0, 255, 0), -1)
+    return image
+
+def ai_interpolation_stub(frames_folder: str):
+    print(f"[AI Stub] Future AI interpolation placeholder for: {frames_folder}")
+
+# ======================================================
+# 🔹 Request Models
+# ======================================================
+class SaveVersionRequest(BaseModel):
+    base_filename: str
+    version_number: int
+    landmarks: List[dict]
+
+# ======================================================
+# 🔹 IMAGE: Single Frame Pose Detection
+# ======================================================
+@app.post("/pose/draw/")
+async def detect_pose_and_draw(file: UploadFile = File(...), user_email: str = Depends(verify_jwt)):
+    input_path = os.path.join(UPLOAD_DIR, file.filename)
+    output_path = os.path.join(PROCESSED_DIR, user_email, f"processed_{file.filename}")
+    version_folder = os.path.join(VERSIONS_DIR, user_email, os.path.splitext(file.filename)[0])
+
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    os.makedirs(version_folder, exist_ok=True)
+
+    with open(input_path, "wb") as f:
+        f.write(await file.read())
+
+    image = cv2.imread(input_path)
+    if image is None:
+        raise HTTPException(status_code=400, detail="Invalid image file")
+
+    landmarks_list = []
+    with mp_pose.Pose(static_image_mode=True) as pose:
+        results = pose.process(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
+        if not results.pose_landmarks:
+            return {"error": "No pose detected"}
+        for lm in results.pose_landmarks.landmark:
+            landmarks_list.append({"x": lm.x, "y": lm.y, "z": lm.z, "visibility": lm.visibility})
+
+        mp_drawing.draw_landmarks(
+            image, results.pose_landmarks, mp_pose.POSE_CONNECTIONS,
+            landmark_drawing_spec=mp_drawing_styles.get_default_pose_landmarks_style()
+        )
+
+    cv2.imwrite(output_path, image)
+    with open(os.path.join(version_folder, "original.json"), "w") as jf:
+        json.dump(landmarks_list, jf, indent=2)
+
+    return JSONResponse({
+        "user": user_email,
+        "processed_image": output_path.replace("\\", "/"),
+        "landmarks": landmarks_list,
+        "version": "original"
+    })
+
+# ======================================================
+# 🔹 IMAGE: Save Version
+# ======================================================
+@app.post("/pose/save-version/")
+async def save_pose_version(request: SaveVersionRequest, user_email: str = Depends(verify_jwt)):
+    version_folder = os.path.join(VERSIONS_DIR, user_email, request.base_filename)
+    os.makedirs(version_folder, exist_ok=True)
+
+    original_path = os.path.join(PROCESSED_DIR, user_email, f"processed_{request.base_filename}.jpg")
+    if not os.path.exists(original_path):
+        raise HTTPException(status_code=404, detail="Original processed image not found")
+
+    image = cv2.imread(original_path)
+    image_with_updates = draw_landmarks_on_image(image.copy(), request.landmarks)
+
+    version_img = os.path.join(version_folder, f"v{request.version_number}.jpg")
+    version_json = os.path.join(version_folder, f"v{request.version_number}.json")
+    cv2.imwrite(version_img, image_with_updates)
+    with open(version_json, "w") as jf:
+        json.dump(request.landmarks, jf, indent=2)
+
+    return {"message": f"Version v{request.version_number} saved", "image": version_img, "json": version_json}
+
+# ======================================================
+# 🔹 VIDEO: Dynamic Frame Skipping (JWT Protected)
+# ======================================================
+@app.post("/pose/video/")
+async def process_video_pose(
+    file: UploadFile = File(...),
+    user_email: str = Depends(verify_jwt),
+    max_frames: int = Query(DEFAULT_MAX_FRAMES, ge=1, le=1000),
+    frame_skip: int = Query(DEFAULT_FRAME_SKIP, ge=1, le=30),
+    motion_threshold: float = Query(DEFAULT_MOTION_THRESHOLD, ge=0.0, le=255.0)
+):
+    # ✅ Save raw video
+    raw_path = os.path.join(UPLOAD_DIR, file.filename)
+    await file.seek(0)
+    with open(raw_path, "wb") as f:
+        f.write(await file.read())
+
+    # ✅ Create user-specific folder
+    video_basename = os.path.splitext(file.filename)[0]
+    processed_dir = os.path.join(PROCESSED_DIR, user_email, video_basename)
+    os.makedirs(processed_dir, exist_ok=True)
+
+    cap = cv2.VideoCapture(raw_path)
+    if not cap.isOpened():
+        raise HTTPException(status_code=400, detail="Cannot open video file")
+
+    pose = mp_pose.Pose(static_image_mode=True)
+    prev_gray = None
+    frame_count, saved_frames = 0, 0
+    saved_files, landmarks_summary = [], []
+
+    while saved_frames < max_frames:
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        frame = cv2.rotate(frame, cv2.ROTATE_180)
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+        motion_score = 0
+        if prev_gray is not None:
+            motion_score = cv2.absdiff(gray, prev_gray).mean()
+        prev_gray = gray
+
+        process_frame = motion_score > motion_threshold or frame_count % frame_skip == 0
+
+        if process_frame:
+            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            results = pose.process(rgb_frame)
+
+            if results.pose_landmarks:
+                frame_copy = frame.copy()
+                mp_drawing.draw_landmarks(
+                    frame_copy, results.pose_landmarks, mp_pose.POSE_CONNECTIONS,
+                    landmark_drawing_spec=mp_drawing_styles.get_default_pose_landmarks_style()
+                )
+
+                frame_filename = f"frame_{saved_frames+1:05d}.jpg"
+                save_path = os.path.join(processed_dir, frame_filename)
+                cv2.imwrite(save_path, frame_copy, [int(cv2.IMWRITE_JPEG_QUALITY), JPEG_QUALITY])
+                saved_files.append(frame_filename)
+
+                landmarks = [{"x": lm.x, "y": lm.y, "z": lm.z, "visibility": lm.visibility} for lm in results.pose_landmarks.landmark]
+                with open(os.path.join(processed_dir, f"frame_{saved_frames+1:05d}.json"), "w") as jf:
+                    json.dump(landmarks, jf, indent=2)
+
+                landmarks_summary.append({"frame": frame_filename, "landmarks": landmarks})
+                saved_frames += 1
+
+        frame_count += 1
+
+    cap.release()
+    pose.close()
+    ai_interpolation_stub(processed_dir)
+
+    return {
+        "user": user_email,
+        "message": f"Video processed. {saved_frames} frames saved.",
+        "processed_frames_path": processed_dir.replace("\\", "/"),
+        "frames": saved_files,
+        "landmarks_summary": landmarks_summary
+    }
