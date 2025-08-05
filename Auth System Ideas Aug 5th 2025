@@ -78,3 +78,62 @@ If you want, I can:
 * Or write example frontend login/signup components using Next.js that talk to your backend
 
 Just say what to start with!
+
+
+You're exactly right to separate concerns here. Here's the best practice approach for your setup:
+
+---
+
+### Where to put what?
+
+| Responsibility                                                                                            | Suggested Location                        | Why / Notes                                                                                                                                  |
+| --------------------------------------------------------------------------------------------------------- | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| **User authentication backend** (signup/login, token issuing, password hashing, user DB)                  | `auth-service` folder                     | Dedicated microservice for auth keeps things modular and secure. This is where your FastAPI auth backend lives, handles JWT, user CRUD, etc. |
+| **Frontend UI for auth** (signup page, login page, password reset forms, session handling, token storage) | `frontend-next` (or your frontend folder) | UI and UX related to auth must live here, integrated with the backend auth-service APIs.                                                     |
+| **Pose-service**                                                                                          | Remains focused on video processing only  | It should NOT handle auth logic but **should** enforce auth via JWT on its endpoints (which you added).                                      |
+
+---
+
+### Why separate?
+
+* Keeps your codebase clean, modular, easier to maintain and scale.
+* You can independently update your auth-service (add MFA, OAuth, etc.) without touching pose processing or frontend logic.
+* The frontend can call auth-service endpoints to signup/login and then call pose-service with the JWT token it got.
+* This architecture is common in microservices or clean layered architectures.
+
+---
+
+### Next steps you might consider:
+
+1. **Finish auth-service fully:**
+
+   * Make sure signup, login, token refresh, password reset etc. work.
+   * Have endpoints like `/signup`, `/login`, `/refresh-token`.
+
+2. **Build frontend auth UI:**
+
+   * Signup & login pages that call auth-service APIs.
+   * Save the JWT token securely (e.g., httpOnly cookies or localStorage depending on security requirements).
+   * Pass token as Bearer auth in requests to pose-service.
+
+3. **Integrate pose-service auth:**
+
+   * You already added JWT verification to pose-service.
+   * Make sure requests without valid tokens get rejected with 401.
+
+4. **Optional: User profile and management**
+
+   * User preferences, account details in auth-service.
+   * Frontend UI for editing profile.
+
+---
+
+### Summary
+
+* **Auth backend**: `auth-service`
+* **Auth frontend UI**: `frontend-next` (or wherever your React/Next.js frontend lives)
+* **Pose processing backend**: `pose-service` with JWT token enforcement but no user creation or login
+
+---
+
+If you want, I can help you scaffold a basic **frontend auth UI** (signup + login React components) that talks to your auth-service next? Or help add more features to auth-service?
