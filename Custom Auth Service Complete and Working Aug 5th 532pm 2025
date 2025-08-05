@@ -1,0 +1,48 @@
+🔥 **Boom!** That’s exactly the expected response.
+
+✅ You have now:
+
+* A working **custom FastAPI Auth Service** with SQLite, bcrypt, and JWT.
+* Confirmed **signup**, **login**, and **protected routes** all work correctly.
+
+---
+
+## ✅ **What we’ve built so far**
+
+1. **Pose-Service** → Processes videos into pose images dynamically
+2. **Backend** → Manages uploads (raw + processed)
+3. **Auth-Service** → Handles secure user authentication with JWT
+4. **Frontend (Next.js)** → Ready to consume these APIs
+5. **Three services running independently** → modular & scalable
+
+---
+
+## 🚀 **Next Logical Step**
+
+Now we **tie these services together**:
+
+1. **Integrate JWT Auth with Pose-Service**
+
+   * Require a valid JWT for `/pose/video/` and `/pose/draw/`.
+   * Extract `user_email` (or `user_id`) from the token.
+   * Save processed frames under:
+
+     ```
+     uploads/processed/<user_email>/<video_name>/
+     ```
+   * No more `test_user_timestamp` folders.
+
+2. **Update Backend to Support User-Specific Storage**
+
+   * Each user only accesses their own processed videos.
+
+3. **Frontend Integration**
+
+   * Add login/signup pages (Next.js) to get JWT.
+   * Store JWT in local storage or HTTP-only cookies.
+   * Use JWT in headers when calling backend APIs.
+
+---
+
+🔥 Shall I **rewrite the pose-service** now with JWT authentication integrated so uploads are securely tied to each logged-in user?
+👉 If yes, I’ll produce the **full updated code**.
