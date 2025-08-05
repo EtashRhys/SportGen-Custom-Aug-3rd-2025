@@ -1,0 +1,232 @@
+# auth_app.py
+
+from fastapi import FastAPI, HTTPException, Depends, status, Request
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, EmailStr
+from typing import Optional
+from jose import JWTError, jwt
+from datetime import datetime, timedelta
+import sqlite3
+import bcrypt
+import secrets
+
+app = FastAPI()
+
+# DB Setup
+DB_PATH = "auth.db"
+
+def init_db():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT UNIQUE NOT NULL,
+            hashed_password TEXT NOT NULL,
+            reset_token TEXT,
+            reset_token_expiry INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS refresh_tokens (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            token TEXT UNIQUE NOT NULL,
+            expiry INTEGER NOT NULL,
+            FOREIGN KEY(user_id) REFERENCES users(id)
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+init_db()
+
+# Security settings
+SECRET_KEY = "your_super_secret_key_here_change_me"  # change to env var in prod!
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 15
+REFRESH_TOKEN_EXPIRE_DAYS = 7
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
+
+# Pydantic models
+class UserCreate(BaseModel):
+    email: EmailStr
+    password: str
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+class TokenPayload(BaseModel):
+    sub: str
+    exp: int
+
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+
+class PasswordResetConfirm(BaseModel):
+    token: str
+    new_password: str
+
+# Helper functions
+def get_db_connection():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def hash_password(password: str) -> str:
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(password.encode("utf-8"), salt)
+    return hashed.decode()
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode())
+
+def create_access_token(subject: str, expires_delta: Optional[timedelta] = None):
+    expire = datetime.utcnow() + (expires_delta if expires_delta else timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+    to_encode = {"sub": subject, "exp": expire.timestamp()}
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+def create_refresh_token():
+    return secrets.token_urlsafe(32)
+
+def get_user_by_email(email: str):
+    conn = get_db_connection()
+    user = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+    conn.close()
+    return user
+
+def get_user_by_id(user_id: int):
+    conn = get_db_connection()
+    user = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    conn.close()
+    return user
+
+def store_refresh_token(user_id: int, token: str, expiry: int):
+    conn = get_db_connection()
+    conn.execute(
+        "INSERT INTO refresh_tokens (user_id, token, expiry) VALUES (?, ?, ?)",
+        (user_id, token, expiry)
+    )
+    conn.commit()
+    conn.close()
+
+def revoke_refresh_token(token: str):
+    conn = get_db_connection()
+    conn.execute("DELETE FROM refresh_tokens WHERE token = ?", (token,))
+    conn.commit()
+    conn.close()
+
+def get_refresh_token(token: str):
+    conn = get_db_connection()
+    rt = conn.execute("SELECT * FROM refresh_tokens WHERE token = ?", (token,)).fetchone()
+    conn.close()
+    return rt
+
+# Dependency to get current user from JWT token
+async def get_current_user(token: str = Depends(oauth2_scheme)):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email: str = payload.get("sub")
+        if email is None:
+            raise credentials_exception
+        token_data = TokenPayload(sub=email, exp=payload.get("exp"))
+    except JWTError:
+        raise credentials_exception
+    user = get_user_by_email(email=token_data.sub)
+    if user is None:
+        raise credentials_exception
+    return user
+
+# Routes
+
+@app.post("/signup", status_code=201)
+def signup(user: UserCreate):
+    if get_user_by_email(user.email):
+        raise HTTPException(status_code=400, detail="Email already registered")
+    hashed_pw = hash_password(user.password)
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO users (email, hashed_password) VALUES (?, ?)", (user.email, hashed_pw))
+    conn.commit()
+    user_id = cursor.lastrowid
+    conn.close()
+    return {"id": user_id, "email": user.email, "created_at": datetime.utcnow().isoformat()}
+
+@app.post("/login", response_model=Token)
+def login(form_data: OAuth2PasswordRequestForm = Depends()):
+    user = get_user_by_email(form_data.username)
+    if not user or not verify_password(form_data.password, user["hashed_password"]):
+        raise HTTPException(status_code=401, detail="Incorrect email or password")
+    access_token = create_access_token(user["email"])
+    refresh_token = create_refresh_token()
+    expiry_ts = int((datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)).timestamp())
+    store_refresh_token(user["id"], refresh_token, expiry_ts)
+    return {"access_token": access_token, "token_type": "bearer", "refresh_token": refresh_token}
+
+@app.post("/refresh-token")
+def refresh_token(refresh_token: str):
+    token_data = get_refresh_token(refresh_token)
+    if not token_data:
+        raise HTTPException(status_code=401, detail="Invalid refresh token")
+    if token_data["expiry"] < int(datetime.utcnow().timestamp()):
+        revoke_refresh_token(refresh_token)
+        raise HTTPException(status_code=401, detail="Refresh token expired")
+    user = get_user_by_id(token_data["user_id"])
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+    new_access_token = create_access_token(user["email"])
+    return {"access_token": new_access_token, "token_type": "bearer"}
+
+@app.post("/reset-password-request")
+def reset_password_request(request: PasswordResetRequest):
+    user = get_user_by_email(request.email)
+    if not user:
+        # For security do not reveal user existence
+        return {"message": "If the email exists, a password reset link has been sent."}
+    reset_token = secrets.token_urlsafe(32)
+    expiry = int((datetime.utcnow() + timedelta(hours=1)).timestamp())
+    conn = get_db_connection()
+    conn.execute(
+        "UPDATE users SET reset_token = ?, reset_token_expiry = ? WHERE id = ?",
+        (reset_token, expiry, user["id"])
+    )
+    conn.commit()
+    conn.close()
+    # TODO: send reset_token via email here using an email service (not implemented)
+    print(f"Reset token for {request.email}: {reset_token}")  # for testing/demo only
+    return {"message": "If the email exists, a password reset link has been sent."}
+
+@app.post("/reset-password")
+def reset_password(confirm: PasswordResetConfirm):
+    conn = get_db_connection()
+    user = conn.execute(
+        "SELECT * FROM users WHERE reset_token = ?", (confirm.token,)
+    ).fetchone()
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid reset token")
+    if user["reset_token_expiry"] < int(datetime.utcnow().timestamp()):
+        raise HTTPException(status_code=400, detail="Reset token expired")
+    new_hashed_pw = hash_password(confirm.new_password)
+    conn.execute(
+        "UPDATE users SET hashed_password = ?, reset_token = NULL, reset_token_expiry = NULL WHERE id = ?",
+        (new_hashed_pw, user["id"])
+    )
+    conn.commit()
+    conn.close()
+    return {"message": "Password has been reset successfully"}
+
+# Example protected route
+@app.get("/me")
+async def read_users_me(current_user=Depends(get_current_user)):
+    return {"email": current_user["email"], "id": current_user["id"]}
+
