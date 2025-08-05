@@ -1,0 +1,149 @@
+from fastapi import FastAPI, UploadFile, File, Query
+from fastapi.responses import JSONResponse
+from typing import List
+import os
+import cv2
+import numpy as np
+import mediapipe as mp
+import time
+
+app = FastAPI()
+
+mp_pose = mp.solutions.pose
+mp_drawing = mp.solutions.drawing_utils
+mp_drawing_styles = mp.solutions.drawing_styles
+
+# *** ABSOLUTE BASE PATH ***
+BASE_UPLOAD_DIR = r"C:\Users\bradp\sportgen-ai\backend\uploads"
+
+RAW_DIR = os.path.join(BASE_UPLOAD_DIR, "raw")
+PROCESSED_DIR = os.path.join(BASE_UPLOAD_DIR, "processed")
+
+os.makedirs(RAW_DIR, exist_ok=True)
+os.makedirs(PROCESSED_DIR, exist_ok=True)
+
+MAX_FRAMES = 300
+
+def ai_interpolation_stub(frames, landmarks_list):
+    """
+    Placeholder for future AI interpolation to generate extra frames.
+    Currently does nothing.
+    """
+    # You can add frame interpolation logic here in the future
+    return frames, landmarks_list
+
+def calc_frame_difference(frame1, frame2):
+    """Calculate difference between two grayscale frames for motion detection"""
+    diff = cv2.absdiff(frame1, frame2)
+    non_zero_count = np.count_nonzero(diff)
+    norm = non_zero_count / diff.size
+    return norm
+
+@app.post("/pose/video/")
+async def process_video_pose(
+    file: UploadFile = File(...),
+    user: str = Query("test_user", description="User folder name"),
+    mode: str = Query("dynamic", description="Processing mode: dynamic, every, fixed"),
+    fixed_skip: int = Query(3, description="Fixed skip N frames (only for fixed mode)"),
+    motion_threshold: float = Query(0.02, description="Motion sensitivity threshold (for dynamic mode, 0-1 float)")
+):
+    """
+    Upload video, process pose estimation frames, save images.
+    Modes:
+    - dynamic: skip frames based on motion detected (default)
+    - every: process every frame (up to MAX_FRAMES)
+    - fixed: process every fixed_skip frames (up to MAX_FRAMES)
+    """
+
+    input_path = os.path.join(RAW_DIR, file.filename)
+    user_processed_dir = os.path.join(PROCESSED_DIR, user, os.path.splitext(file.filename)[0])
+    os.makedirs(user_processed_dir, exist_ok=True)
+
+    # Save raw upload
+    with open(input_path, "wb") as f:
+        f.write(await file.read())
+
+    cap = cv2.VideoCapture(input_path)
+    if not cap.isOpened():
+        return JSONResponse(status_code=400, content={"error": "Cannot open video file"})
+
+    pose = mp_pose.Pose(static_image_mode=False, min_detection_confidence=0.5, min_tracking_confidence=0.5)
+
+    saved_frames = []
+    landmarks_all = []
+
+    prev_gray = None
+    frame_idx = 0
+    processed_count = 0
+
+    while True:
+        ret, frame = cap.read()
+        if not ret or processed_count >= MAX_FRAMES:
+            break
+
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+        process_this_frame = False
+
+        if mode == "every":
+            process_this_frame = True
+
+        elif mode == "fixed":
+            if frame_idx % fixed_skip == 0:
+                process_this_frame = True
+
+        elif mode == "dynamic":
+            # Always process first frame
+            if frame_idx == 0:
+                process_this_frame = True
+            else:
+                diff = calc_frame_difference(gray, prev_gray)
+                # Debug print: print(f"Frame {frame_idx} diff: {diff}")
+                if diff >= motion_threshold:
+                    process_this_frame = True
+
+        if process_this_frame:
+            # Run pose detection
+            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            results = pose.process(rgb_frame)
+
+            if results.pose_landmarks:
+                # Draw landmarks on frame copy
+                annotated_frame = frame.copy()
+                mp_drawing.draw_landmarks(
+                    annotated_frame,
+                    results.pose_landmarks,
+                    mp_pose.POSE_CONNECTIONS,
+                    landmark_drawing_spec=mp_drawing_styles.get_default_pose_landmarks_style(),
+                )
+
+                # Save annotated frame
+                filename = f"frame_{processed_count+1:05d}.jpg"
+                filepath = os.path.join(user_processed_dir, filename)
+                cv2.imwrite(filepath, annotated_frame)
+                saved_frames.append(filename)
+
+                # Save landmarks data (optional)
+                landmarks = []
+                for lm in results.pose_landmarks.landmark:
+                    landmarks.append({
+                        "x": lm.x, "y": lm.y, "z": lm.z, "visibility": lm.visibility
+                    })
+                landmarks_all.append(landmarks)
+
+                processed_count += 1
+
+        prev_gray = gray
+        frame_idx += 1
+
+    cap.release()
+    pose.close()
+
+    # Run AI interpolation stub (currently no-op)
+    # saved_frames, landmarks_all = ai_interpolation_stub(saved_frames, landmarks_all)
+
+    return JSONResponse({
+        "message": f"Video processed. {processed_count} frames saved (max {MAX_FRAMES}).",
+        "processed_frames_path": user_processed_dir.replace("\\", "/"),
+        "saved_frames": saved_frames
+    })
