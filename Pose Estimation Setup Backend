@@ -1,0 +1,65 @@
+Absolutely! Here's a clear breakdown of **what we just built** and where everything lives:
+
+---
+
+### 1. **Backend (`backend/` folder)**
+
+This is where your main FastAPI server runs, handling:
+
+* **Uploads** — raw user images get saved here.
+* **Pose Estimation** — running MediaPipe on the uploaded images to detect human pose landmarks.
+* **Image Processing** — drawing pose landmarks on the images.
+* **Versioning** — saving different versions of pose landmark edits with associated images and JSON data.
+* **Listing Versions** — allowing retrieval of saved versions per uploaded image.
+
+**Key files and folders:**
+
+* `app.py`
+  The FastAPI app that:
+
+  * Accepts image uploads and runs pose detection.
+  * Saves processed images with landmarks drawn.
+  * Saves multiple versions of landmarks + images.
+  * Lists all saved versions for a given image.
+
+* `uploads/` (folder)
+  Centralized folder to hold **all image files and versions**:
+
+  * `uploads/<original images>` (raw user uploads)
+  * `uploads/processed/` (processed images with initial pose landmarks drawn)
+  * `uploads/versions/<image_basename>/` (version folders containing edited pose images and JSON)
+
+---
+
+### 2. **Pose-Service (the Python virtual environment & FastAPI running environment)**
+
+* You run the backend (`app.py`) inside this environment with `uvicorn app:app --reload`.
+* This folder contains your virtual environment (`venv`) where all Python dependencies like FastAPI, MediaPipe, OpenCV, etc., are installed.
+* The pose estimation logic and image processing happen here.
+
+---
+
+### What you have now:
+
+* **Clean folder structure**: All user data is inside one main `uploads/` folder with subfolders for organization.
+* **Endpoints:**
+
+  * `/pose/draw/` — Upload an image, get pose landmarks + processed image with pose points drawn.
+  * `/pose/save-version/` — Save an edited version of pose landmarks as a new image + JSON.
+  * `/pose/list-versions/{basename}` — List all saved versions for a particular uploaded image.
+
+---
+
+### Summary
+
+| Component              | Purpose                                  | Location/Folder              |
+| ---------------------- | ---------------------------------------- | ---------------------------- |
+| FastAPI backend server | Pose detection, version save & list APIs | `backend/app.py`             |
+| Uploaded images        | Raw user-uploaded photos                 | `backend/uploads/`           |
+| Processed images       | Initial pose landmarks drawn images      | `backend/uploads/processed/` |
+| Versioned edits        | Edited pose images & landmark JSON data  | `backend/uploads/versions/`  |
+| Virtual env & packages | Python env with dependencies             | `pose-service/venv/`         |
+
+---
+
+If you want, I can help you design how the **frontend** can leverage this backend structure for uploading images, showing pose points, editing, and saving versions — just say the word!
