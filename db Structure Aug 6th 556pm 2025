@@ -1,0 +1,69 @@
+Perfect! Here's the updated plan based on your input:
+
+---
+
+### Updated Tables & Fields
+
+#### 1. **users**
+
+* `id` INTEGER PRIMARY KEY AUTOINCREMENT
+* `email` TEXT UNIQUE NOT NULL
+* `hashed_password` TEXT NOT NULL
+* `reset_token` TEXT (nullable)
+* `reset_token_expiry` INTEGER (nullable) — UNIX timestamp
+* `created_at` TIMESTAMP DEFAULT CURRENT\_TIMESTAMP
+* **`last_login` TIMESTAMP (nullable)**
+* **`is_active` BOOLEAN DEFAULT 1**
+
+#### 2. **refresh\_tokens**
+
+* `id` INTEGER PRIMARY KEY AUTOINCREMENT
+* `user_id` INTEGER NOT NULL
+* `token` TEXT UNIQUE NOT NULL
+* `expiry` INTEGER NOT NULL (UNIX timestamp)
+* **INDEX on `user_id` for performance**
+
+#### 3. **user\_profiles**
+
+* `id` INTEGER PRIMARY KEY AUTOINCREMENT
+* `user_id` INTEGER UNIQUE NOT NULL
+* `first_name` TEXT (nullable)
+* `last_name` TEXT (nullable)
+* `bio` TEXT (nullable)
+* `created_at` TIMESTAMP DEFAULT CURRENT\_TIMESTAMP
+* `updated_at` TIMESTAMP (nullable)
+
+#### 4. **roles**
+
+* `id` INTEGER PRIMARY KEY AUTOINCREMENT
+* `role_name` TEXT UNIQUE NOT NULL
+* `description` TEXT (nullable)
+
+#### 5. **audit\_logs**
+
+* `id` INTEGER PRIMARY KEY AUTOINCREMENT
+* `user_id` INTEGER (nullable)
+* `action` TEXT NOT NULL
+* `timestamp` TIMESTAMP DEFAULT CURRENT\_TIMESTAMP
+* `details` TEXT (nullable)
+
+---
+
+### Notes:
+
+* I included `last_login` and `is_active` in users.
+* Added a **user\_profiles** table with basic profile info (can be extended).
+* Roles table to manage user roles (admin, user, etc.).
+* Audit logs for tracking user actions or system events.
+* Index on `refresh_tokens.user_id` for quick lookups.
+* No enforced foreign keys yet, but can be added later if needed.
+
+---
+
+### Next step:
+
+I'll generate the SQLite `CREATE TABLE IF NOT EXISTS` SQL statements with the above schema. Then we'll update `initDB()` in your `db/index.js` to run these on startup.
+
+---
+
+Sound good? Want me to add anything else or change anything before I generate that?
