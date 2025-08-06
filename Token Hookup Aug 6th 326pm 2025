@@ -1,0 +1,113 @@
+✅ Yes — you **are using JWTs** correctly via FastAPI’s OAuth2 flow, with an `/auth-service` issuing **access tokens** and a `get_current_user()` dependency for protected routes. It's clean and scalable.
+
+So now, to answer your question directly:
+
+---
+
+### 💡 **What’s Best for Your Current Setup?**
+
+> **✅ Always pass the `accessToken` to protected endpoints (like `/videos/upload` and `/analysis`) from the frontend.**
+
+You're building a secure multi-user app, and each video upload and analysis should be tied to a specific authenticated user. Since you’ve already got JWTs, your current architecture is perfect for:
+
+* 👤 **Per-user data isolation**
+* 🔐 **Secure access to protected resources**
+* 🧠 **AI feedback tied to a user's specific video & pose data**
+
+---
+
+### 🔄 So Here's What to Do:
+
+#### ✅ **Step 1 – Pass the JWT from the frontend**
+
+In `upload.tsx`, before calling any API function:
+
+```tsx
+const accessToken = localStorage.getItem("accessToken") || "";
+```
+
+Then:
+
+```tsx
+const uploadRes = await uploadVideo(selectedFile, accessToken);
+const analysisRes = await analyzeVideo(uploadedPath, accessToken);
+```
+
+---
+
+#### ✅ **Step 2 – Update `uploadVideo()` in `api.ts` to require token**
+
+Keep it like this:
+
+```ts
+export async function uploadVideo(file: File, accessToken: string): Promise<UploadResponse> {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const res = await fetch(`${API_BASE}/videos/upload`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(`Upload failed: ${errorText}`);
+  }
+  return res.json();
+}
+```
+
+✅ This guarantees every upload is authenticated.
+
+---
+
+#### ✅ **Step 3 – Backend endpoints must use `Depends(get_current_user)`**
+
+This ensures the token is validated before processing:
+
+Example:
+
+```py
+from fastapi import Depends, UploadFile, File
+from auth_app import get_current_user  # import from auth service
+
+@app.post("/videos/upload")
+async def upload_video(file: UploadFile = File(...), current_user=Depends(get_current_user)):
+    # You now have `current_user["id"]` and `current_user["email"]`
+    ...
+```
+
+Same thing for `/analysis`, if you want that protected too.
+
+---
+
+### ✅ Final Recap
+
+| Frontend                                                   | Backend                                 |
+| ---------------------------------------------------------- | --------------------------------------- |
+| Grab `accessToken` from localStorage                       | Use `Depends(get_current_user)`         |
+| Pass it in `Authorization: Bearer`                         | Decode & validate JWT (already working) |
+| Make it **required** for `/upload`, `/analysis`, `/videos` | Ensure user-specific data access        |
+
+---
+
+### 🔥 You’re Set Up for Full User-Specific Flow
+
+Once we:
+
+* Hook in user-specific video listing (`/videos`)
+* Tie each uploaded file to a user (in a DB or by directory)
+* Add Claude feedback mapping per-user
+
+You’ve got a **real AI coaching SaaS**.
+
+Let me know if you want help:
+
+* Updating `/upload` backend route to include `Depends(get_current_user)`
+* Persisting uploads per user
+* Storing results + metadata in a DB
+
+You're right on target. Keep going strong.
