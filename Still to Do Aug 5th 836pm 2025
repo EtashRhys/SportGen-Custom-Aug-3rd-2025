@@ -1,0 +1,90 @@
+🔥 **You’re way closer to an MVP than most startups at this stage.** Based on what’s already completed, here’s a clear breakdown of **what’s left to hit a full MVP**:
+
+---
+
+## ✅ **Remaining Tasks Before MVP**
+
+### 1. **Frontend – Complete User Flow**
+
+* ✅ **Login, Signup, Dashboard** (working, just polish UI)
+* ⬜ **Upload UI Integration with Backend**
+
+  * Connect upload page to your current backend (pose + processing pipeline).
+  * Display upload progress, success, and processing status.
+* ⬜ **Video Listing in Dashboard**
+
+  * Show all uploaded videos (with name, date, status).
+  * Add simple buttons: *View*, *Delete*.
+* ⬜ **Pose Visualization**
+
+  * Render pose estimation results (overlay landmarks on video/images or display JSON cleanly).
+
+---
+
+### 2. **Backend – Final Glue**
+
+* ✅ **Auth Service** (done)
+* ✅ **Pose Service** (done)
+* ⬜ **Integrate Pose Service with Video Uploads**
+
+  * Trigger pose processing automatically after upload.
+  * Store results (e.g., JSON with landmarks) and link to user/video.
+* ⬜ **Add Simple API Endpoints**
+
+  * `/videos` – List user’s videos with metadata.
+  * `/videos/:id` – Fetch video + analysis results.
+
+---
+
+### 3. **AI Coaching Feedback**
+
+* ⬜ **Integrate AI Model (Claude 3.5 Sonnet)**
+
+  * Send processed pose data → generate coaching feedback.
+  * Store and return feedback to frontend.
+
+---
+
+### 4. **Polish & UX**
+
+* ⬜ **Consistent UI Styling**
+
+  * Apply the video background/login theme across dashboard + upload.
+* ⬜ **Error Handling**
+
+  * Display user-friendly messages on errors.
+* ⬜ **Basic Branding**
+
+  * Logo, name, colors for presentation.
+
+---
+
+### 5. **MVP Deployment**
+
+* ⬜ **Backend Deployment**
+
+  * Use a cheap VPS (DigitalOcean, Linode) or Render for free tier.
+* ⬜ **Frontend Deployment**
+
+  * Deploy Next.js on Vercel/Netlify.
+* ⬜ **Domain + SSL**
+
+  * Point a custom domain for polish.
+
+---
+
+## ⏱️ **Time Remaining**
+
+* **Frontend polish + integration** – 1 week
+* **Backend glue + API endpoints** – 3–5 days
+* **AI feedback integration** – 3–5 days
+* **Deployment + testing** – 2–3 days
+
+---
+
+## 🎯 **MVP Ready in \~2 Weeks (at your current pace)**
+
+---
+
+🔥 **Want me to create a short, step-by-step roadmap with exact file changes for each stage (frontend + backend integration → AI → deploy)?**
+I can lay it out so you can **just follow and complete it piece by piece**. Want me to do that?
