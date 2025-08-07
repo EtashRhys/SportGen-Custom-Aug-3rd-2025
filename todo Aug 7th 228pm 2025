@@ -1,0 +1,149 @@
+Awesome—today’s the day to **lock the token system down** and finally get this thing **uploading, verifying, and analyzing** end-to-end.
+
+---
+
+## 🔥 QUICK STRATEGY: Fix the Token Flow in 3 Stages
+
+### ✅ STAGE 1 — ENV VAR + SECRET KEY SYNC
+
+**Goal**: Make sure the `JWT_SECRET` is exactly the same in **backend** and **pose-service**, and both services load it correctly.
+
+#### ✅ 1.1. Check `.env` in both services:
+
+Make sure both have:
+
+```env
+JWT_SECRET=super-secret-key-change-this
+```
+
+#### ✅ 1.2. Ensure they actually **use** the `.env` secret:
+
+**In Node (Express backend)**:
+
+```js
+const JWT_SECRET = process.env.JWT_SECRET;
+jwt.verify(token, JWT_SECRET);
+```
+
+**In FastAPI (pose service)**:
+
+```py
+import os
+JWT_SECRET = os.getenv("JWT_SECRET", "fallback-secret")
+payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+```
+
+> ❗️**Debug tip**: Temporarily `print(JWT_SECRET)` in both services when they boot — confirm they match 100%.
+
+---
+
+### ✅ STAGE 2 — DEBUG TOKEN FORWARDING (Backend → Pose)
+
+**Goal**: Make sure backend sends the **exact same valid JWT** to the pose service, and the pose service accepts it.
+
+#### ✅ 2.1. Confirm backend is passing the correct header:
+
+In your backend, it should be:
+
+```js
+axios.post('http://localhost:8001/pose', formData, {
+  headers: {
+    Authorization: `Bearer ${token}`
+  }
+});
+```
+
+#### ✅ 2.2. Confirm the pose service reads the token:
+
+In FastAPI:
+
+```py
+from fastapi import Header, HTTPException
+
+def verify_token(authorization: str = Header(...)):
+    try:
+        scheme, token = authorization.split()
+        if scheme.lower() != 'bearer':
+            raise ValueError("Wrong scheme")
+        payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+        return payload
+    except Exception as e:
+        print(f"[AUTH ERROR] {e}")
+        raise HTTPException(status_code=401, detail="Unauthorized")
+```
+
+> ✅ Add a `print(payload)` if it works, or `print(e)` if not, to make logs useful.
+
+#### ✅ 2.3. Confirm token has a `"sub"` claim:
+
+From backend login code, token should be created like this:
+
+```js
+jwt.sign({ sub: user.email }, process.env.JWT_SECRET, { expiresIn: '1h' });
+```
+
+---
+
+### ✅ STAGE 3 — FULL TEST & LOGGING
+
+**Goal**: Run a full test and confirm every stage logs success/failure clearly.
+
+#### 🔍 Log the journey:
+
+* **Frontend**
+
+  * ✅ Log “Token loaded: ...”
+  * ✅ Log response or error from upload
+
+* **Backend**
+
+  * ✅ Log “Received token: ...”
+  * ✅ Log “Forwarding video to pose service with token: ...”
+  * ✅ Log success/failure of call to pose
+
+* **Pose service**
+
+  * ✅ Log “Received token: ...”
+  * ✅ Log decoded payload or error
+  * ✅ Log when pose data is returned
+
+---
+
+## ✅ BONUS: MANUAL TOKEN TEST
+
+To make debugging 100% precise, run a manual token test using Node:
+
+**Create a quick `generate-token.js`:**
+
+```js
+const jwt = require('jsonwebtoken');
+const token = jwt.sign({ sub: "brad@example.com" }, "super-secret-key-change-this", { expiresIn: "1h" });
+console.log("JWT:", token);
+```
+
+Then take that JWT and manually test your `/pose` endpoint using `curl` or Postman:
+
+```bash
+curl -X POST http://localhost:8001/pose \
+  -H "Authorization: Bearer <paste-token-here>" \
+  -F "video=@/path/to/sample.mp4"
+```
+
+If that works → ✅ you’ve nailed the secret + decoding issue.
+
+---
+
+## 🧭 Once That Works — Final Checklist
+
+* [ ] Pose service returns JSON properly
+* [ ] Backend receives + parses pose result
+* [ ] Frontend handles success / error state cleanly
+* [ ] LocalStorage keeps token on reload
+* [ ] Add logout button
+* [ ] Full MVP upload + analysis works 🎯
+
+---
+
+Let’s start with **JWT secret sync + pose service logs**. Drop any logs or errors you get here, and I’ll help you instantly debug.
+
+Ready when you are.
