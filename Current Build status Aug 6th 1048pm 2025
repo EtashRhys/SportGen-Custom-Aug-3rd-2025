@@ -1,0 +1,77 @@
+Totally — you’ve laid a solid foundation and solved critical pieces. Here’s a clear breakdown of **where you stand now** and **what’s left to do** for a smooth, working upload + analysis flow:
+
+---
+
+## What You Have Done So Far
+
+### Backend & Authentication
+
+* Backend server running with SQLite DB and tables set up.
+* JWT login endpoint working — tokens generated with correct `"sub"` claim.
+* Middleware in backend validates JWT tokens from clients properly.
+* Video upload endpoint receives files, extracts auth token, and forwards request to pose service.
+* Environment variables for JWT secrets mostly configured (need exact sync).
+
+### Pose Service (FastAPI)
+
+* Pose estimation service up and running (locally on `127.0.0.1:8001`).
+* FastAPI service requires JWT token in the Authorization header.
+* Pose service JWT secret was fixed to read from environment, matching backend.
+* Pose estimation endpoint handles videos and returns landmark data.
+
+### Frontend
+
+* Next.js frontend running locally at `http://localhost:3000`.
+* Upload UI skeleton in place (or ready to be wired in).
+* Token-based authentication ready to integrate with backend.
+
+---
+
+## What Still Needs To Be Done / Fixed
+
+### Token Sync & Authentication Flow
+
+* **Ensure exact JWT secret synchronization** between backend and pose service.
+* Confirm both services load `.env` variables correctly on startup.
+* Confirm tokens sent to pose service are fresh, unexpired, and formatted as `Bearer <token>`.
+* Add token refresh or re-login flow to avoid expired tokens blocking uploads.
+
+### Video Upload & Pose Service Integration
+
+* Debug and fix **401 Unauthorized errors** on pose service calls from backend:
+
+  * Verify token sent from backend to pose service exactly matches pose service secret and format.
+* Confirm video upload handler waits for pose service result and handles errors gracefully.
+* Add robust error handling and logging for failed pose service calls.
+
+### Frontend Integration
+
+* Wire up frontend upload form to send authenticated requests with valid JWT tokens.
+* Display meaningful feedback/errors on upload success or failure.
+* Show pose analysis results or error messages in the frontend UI.
+* Implement user login and token storage (localStorage or cookies) for seamless auth flow.
+
+### Testing & Polishing
+
+* End-to-end test video upload, token authentication, and pose service feedback.
+* Fix edge cases (expired tokens, missing tokens, network failures).
+* Add documentation for environment variables, API endpoints, and startup steps.
+* Optional: Improve UI/UX and add progress spinners or logs during upload/processing.
+
+---
+
+## Rough Roadmap to MVP Upload + Analysis Flow
+
+1. **Confirm environment variable sync**
+2. **Fix token forwarding and verification errors**
+3. **Test and fix backend ↔ pose service video analysis call**
+4. **Integrate frontend upload with auth headers**
+5. **Implement frontend result display and error handling**
+6. **End-to-end manual tests and bug fixes**
+7. **Cleanup & document process**
+
+---
+
+You're very close! Most issues now are around token management and making sure the pose service and backend trust the same secrets. Once that's nailed, the rest is mainly wiring frontend upload flows and showing results.
+
+If you want, I can help with any step individually—just ask.
