@@ -1,0 +1,33 @@
+[ User ] 
+   │
+   │ 1. Login/Signup
+   ▼
+[ Auth Service (auth_app) ]
+   │
+   │ ✅ Works — returns token
+   ▼
+[ Frontend (Next.js) ]
+   │
+   │ ✅ Stores token
+   │
+   │ ⚠️ 4. Upload Request sends token, but...
+   ▼
+[ Backend Service (backend) ]
+   │
+   │ ⚠️ Token verify may fail if `.env` JWT_SECRET doesn't match
+   │
+   │ ⚠️ Forwards invalid/expired token to pose-service
+   ▼
+[ Pose Service (pose-service) ]
+   │
+   │ ❌ 401 Unauthorized — token is invalid or missing
+   │
+   │ 🔴 No pose results sent back
+   ▼
+[ Backend ]
+   │
+   │ 🔴 Responds to frontend with "Upload and analysis failed"
+   ▼
+[ Frontend ]
+   │
+   │ 🔴 Shows error to user
