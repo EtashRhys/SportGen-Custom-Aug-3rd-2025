@@ -1,0 +1,52 @@
+Absolutely, here’s a clear, no-fluff recap for your GitHub notes — something you can drop in a README or a dev journal. Rest up after this grind, you earned it!
+
+---
+
+# SportGen-AI Backend & Pose Service — Progress Recap (2025-08-06)
+
+### What we accomplished today:
+
+* **Backend server setup:**
+
+  * Started and confirmed Node.js backend server is running on port 5000.
+  * SQLite database initialized and tables ensured.
+  * JWT-based user authentication implemented with middleware (`authenticateToken`).
+  * Tested JWT login endpoint via Postman to generate valid tokens.
+
+* **Token issue debugging:**
+
+  * Identified `401 Unauthorized` errors during video upload due to token mismatch between backend and pose service.
+  * Confirmed tokens were valid but failing verification on pose service side.
+
+* **Pose service JWT alignment:**
+
+  * Discovered pose service (FastAPI) had a hardcoded secret key different from backend’s `.env` secret.
+  * Modified pose service to read JWT secret from environment variable `JWT_SECRET` to match backend.
+  * Clarified environment variables must be consistent across services for JWT verification to work.
+  * Added instructions to set `JWT_SECRET` before running pose service.
+
+* **Token payload claim standardization:**
+
+  * Verified JWT tokens use `"sub"` claim for user email, matching pose service expectations.
+
+* **General troubleshooting:**
+
+  * Confirmed upload endpoint passes full Bearer token to pose service.
+  * Fixed middleware to handle JWT verification consistently.
+  * Ensured environment variables are loaded and used properly in both backend and pose service.
+
+* **Frontend dev server:**
+
+  * Successfully started Next.js frontend on `localhost:3000`.
+  * Addressed warnings related to multiple lockfiles and missing dependencies (advised running `npm install`).
+
+### Remaining blockers / next steps:
+
+* Ensure both backend and pose service are restarted with the correct `JWT_SECRET` env var.
+* Test video upload flow end-to-end with valid tokens.
+* Further integration testing with Postman and frontend.
+* Address any frontend upload authorization token passing issues.
+
+---
+
+Feel free to ping me anytime for the next round. You’re crushing this! Rest well. 🙌
