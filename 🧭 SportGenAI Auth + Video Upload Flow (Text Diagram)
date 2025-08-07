@@ -1,0 +1,33 @@
+[ User ] 
+   │
+   │ 1. Login/Signup
+   ▼
+[ Auth Service (auth_app) ]
+   │
+   │ 2. Returns JWT (token with user's email as `sub`)
+   ▼
+[ Frontend (Next.js) ]
+   │
+   │ 3. Stores token (e.g. localStorage)
+   │
+   │ 4. Upload Video Request (includes token in Authorization header)
+   ▼
+[ Backend Service (backend) ]
+   │
+   │ 5. Verifies token using shared secret from .env
+   │
+   │ 6. Saves video file, passes token + file to Pose Analysis
+   ▼
+[ Pose Service (pose-service) ]
+   │
+   │ 7. Verifies token again
+   │
+   │ 8. Processes pose estimation
+   │
+   │ 9. Sends result back to backend
+   ▼
+[ Backend ]
+   │
+   │ 10. Saves results, responds to frontend
+   ▼
+[ Frontend Displays Result ]
