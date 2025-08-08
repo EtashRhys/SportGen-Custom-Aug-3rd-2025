@@ -1,0 +1,44 @@
+Great question! Testing edge cases helps you catch potential bugs and improve user experience before launch. Here are some key edge cases you might want to test for your auth + verification flow:
+
+### 1. **Email Verification Edge Cases**
+
+* Try verifying with an **expired token** — does it show the right error and offer a resend option?
+* Try verifying with an **invalid token** (tampered or random string).
+* Try verifying when the user is **already verified** — does it respond properly without breaking?
+* Try clicking the verification link **multiple times**.
+* Try verifying a token for an email that **doesn’t exist** in your DB.
+
+### 2. **Resend Verification Edge Cases**
+
+* Resend verification for an **already verified account** — it should reject or inform properly.
+* Resend verification with **no email** or **invalid email format**.
+* Resend verification for an email **not in your system** — should show an appropriate error.
+
+### 3. **Signup Edge Cases**
+
+* Try signing up with an **already registered email**.
+* Try signing up with **invalid email formats** or **empty password**.
+* Try signing up without completing the verification — what happens if the user tries to login before verification?
+
+### 4. **Login Edge Cases**
+
+* Try login with **wrong password**.
+* Try login with an **unverified account** — does it block and prompt verification/resend?
+* Try login with **empty fields**.
+* Try logging in after **logout** to check session clearing.
+
+### 5. **Session & Token Handling**
+
+* Check token expiration handling — does the app properly refresh or force re-login?
+* Check manual removal of tokens from localStorage — app should handle gracefully.
+* Check behavior if backend is unreachable during login or verification.
+
+### 6. **UI/UX Edge Cases**
+
+* What happens if a user navigates back and forth between verification, resend, login pages rapidly?
+* Try slow network conditions to verify loading spinners and error handling.
+* Accessibility checks for buttons, inputs, and error messages.
+
+---
+
+If you want, I can help you set up automated tests or create a testing checklist. Otherwise, manual testing with the above scenarios will give you solid coverage before real users jump in. What do you think?
