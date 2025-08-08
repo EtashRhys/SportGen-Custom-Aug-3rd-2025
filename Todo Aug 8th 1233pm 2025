@@ -1,0 +1,36 @@
+🚀 Today’s Plan — Auth Finalization Sprint
+Resend Verification Page (Frontend)
+
+Create /resend-verification page with email input.
+
+On submit → call backend resend endpoint.
+
+Display success/failure alerts.
+
+UX: Show link to this page on login/signup if account is unverified.
+
+Password Reset Flow (Frontend)
+
+Create /forgot-password page → sends reset email.
+
+Create /reset-password page → user enters new password after clicking email link.
+
+Wire both to backend endpoints already built.
+
+Verification Flow UX Polish
+
+If unverified → automatically redirect to “Verify Email” page with a big “Resend Email” button.
+
+Make verification success page redirect to login automatically after ~3 seconds.
+
+Regression Test the Full Auth Cycle
+
+Sign up → verify email → log in → log out → log back in.
+
+Try to log in without verification (should block + suggest resend).
+
+Try password reset flow from start to finish.
+
+Ensure JWT refresh works after login for at least an hour.
+
+💡 Once we wrap those, the auth system will be airtight — which means the rest of SportGen can focus entirely on the fun stuff: uploads, AI analysis, and dashboard polish without tripping over auth bugs.
