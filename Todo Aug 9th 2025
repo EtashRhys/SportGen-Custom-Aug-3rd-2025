@@ -1,0 +1,118 @@
+Here’s exactly how we’ll attack this in Postman tomorrow so we get clarity on where your verification is failing and fix it fast.
+
+---
+
+## **1️⃣ Test the `/register` endpoint**
+
+**Goal:** Make sure a new user can be created and the backend sends a proper verification email with a working token.
+
+**Steps:**
+
+1. In Postman:
+
+   * Method: `POST`
+   * URL: `http://localhost:5000/register`
+   * Body → JSON:
+
+     ```json
+     {
+       "email": "newtestuser@example.com",
+       "password": "Test1234"
+     }
+     ```
+2. Check the **response JSON** for:
+
+   * A success message.
+   * The verification email being "sent" (in dev, maybe printed to console or saved to logs).
+   * The token link format (we’ll extract this token for the next test).
+
+---
+
+## **2️⃣ Test `/verify-email` directly**
+
+**Goal:** See if verification works **without** the frontend.
+
+**Steps:**
+
+1. Take the token from the registration response or logs.
+2. In Postman:
+
+   * Method: `POST`
+   * URL: `http://localhost:5000/verify-email`
+   * Body → JSON:
+
+     ```json
+     {
+       "token": "PASTE_TOKEN_HERE"
+     }
+     ```
+3. Check:
+
+   * Response should be `200 OK` and say **“Email verified successfully”**.
+   * If you get an error, we’ll confirm if it’s token parsing, expiration, or DB lookup.
+
+---
+
+## **3️⃣ Test `/login` before and after verification**
+
+**Goal:** Ensure login is blocked until verification is done.
+
+**Steps:**
+
+1. **Before verification:**
+
+   * POST → `http://localhost:5000/login`
+   * Body:
+
+     ```json
+     {
+       "email": "newtestuser@example.com",
+       "password": "Test1234"
+     }
+     ```
+   * Expected: **401 Unauthorized** or **"Please verify your email first"**.
+2. **After verification:**
+
+   * Same request.
+   * Expected: **200 OK** with a JWT token.
+
+---
+
+## **4️⃣ Test expired or invalid token behavior**
+
+**Goal:** Make sure expired or tampered tokens fail.
+
+**Steps:**
+
+1. Take a real token and edit 1–2 characters.
+2. Send to `/verify-email`.
+3. Expected: **400 or 401** with **"Invalid or expired token"**.
+4. If possible, generate an expired token and confirm it fails.
+
+---
+
+## **5️⃣ Test frontend integration after backend is confirmed**
+
+**Goal:** Make sure `/verify` page in `verify.tsx` works with the real API.
+
+**Steps:**
+
+1. Register in frontend.
+2. Copy the verification link from the email/logs.
+3. Paste it in browser.
+4. Expected: ✅ Success page → redirect to login → login works.
+
+---
+
+### **Why this plan works**
+
+We’re isolating the problem:
+
+* If Postman works → the backend is fine, issue is frontend fetch.
+* If Postman fails → backend token handling is the issue.
+
+---
+
+I can also **write a Postman Collection** tonight so tomorrow we can just import it and run all tests in one click. That’ll save time.
+
+Do you want me to prep that collection for you?
